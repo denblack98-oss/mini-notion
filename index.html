@@ -1,1 +1,463 @@
-<h1>Mini Notion</h1>
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini Notion</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+        background: #f5f6f8;
+        color: #1f1f1f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        width: 100%;
+        min-height: 100vh;
+      }
+
+      .sidebar {
+        background: #ffffff;
+        border-right: 1px solid #e1e4ea;
+        padding: 24px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .sidebar h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0.03em;
+      }
+
+      .pages {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .page-item {
+        border: 1px solid transparent;
+        background: #f7f7f9;
+        padding: 10px 12px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        cursor: pointer;
+        transition: border 0.2s ease, background 0.2s ease;
+      }
+
+      .page-item.active {
+        border-color: #c7d2fe;
+        background: #eef2ff;
+      }
+
+      .page-item span {
+        font-size: 14px;
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .page-item button {
+        border: none;
+        background: transparent;
+        color: #9aa3b2;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .sidebar button,
+      .toolbar button {
+        border: none;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #111827;
+        color: #ffffff;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .sidebar button.secondary {
+        background: #f3f4f6;
+        color: #111827;
+      }
+
+      .main {
+        padding: 32px 48px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+
+      .title-input {
+        font-size: 32px;
+        font-weight: 600;
+        border: none;
+        outline: none;
+        background: transparent;
+        width: 100%;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .toolbar select {
+        border-radius: 10px;
+        border: 1px solid #e1e4ea;
+        padding: 8px 10px;
+        font-size: 14px;
+        background: #ffffff;
+      }
+
+      .blocks {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .block {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: #ffffff;
+        border: 1px solid #edf0f5;
+      }
+
+      .block textarea,
+      .block [contenteditable="true"] {
+        border: none;
+        outline: none;
+        width: 100%;
+        font-size: 16px;
+        font-family: inherit;
+        resize: none;
+      }
+
+      .block .heading {
+        font-size: 20px;
+        font-weight: 600;
+      }
+
+      .block .checkbox-text {
+        flex: 1;
+        font-size: 16px;
+      }
+
+      .block .delete {
+        border: none;
+        background: transparent;
+        color: #9aa3b2;
+        cursor: pointer;
+        font-size: 16px;
+      }
+
+      .empty {
+        color: #9aa3b2;
+        font-size: 14px;
+      }
+
+      @media (max-width: 900px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          border-right: none;
+          border-bottom: 1px solid #e1e4ea;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <h1>Mini Notion</h1>
+        <div class="pages" id="pages"></div>
+        <button id="add-page">Новая страница</button>
+      </aside>
+      <main class="main">
+        <input
+          id="page-title"
+          class="title-input"
+          type="text"
+          placeholder="Название страницы"
+        />
+        <div class="toolbar">
+          <select id="block-type">
+            <option value="text">Текст</option>
+            <option value="heading">Заголовок</option>
+            <option value="checkbox">Чекбокс</option>
+          </select>
+          <button id="add-block">Добавить блок</button>
+        </div>
+        <div class="blocks" id="blocks"></div>
+        <div class="empty" id="empty-state" hidden>
+          Добавьте первый блок, чтобы начать писать.
+        </div>
+      </main>
+    </div>
+
+    <script>
+      const STORAGE_KEY = "mini-notion-data";
+      const pagesContainer = document.getElementById("pages");
+      const addPageButton = document.getElementById("add-page");
+      const pageTitleInput = document.getElementById("page-title");
+      const blockTypeSelect = document.getElementById("block-type");
+      const addBlockButton = document.getElementById("add-block");
+      const blocksContainer = document.getElementById("blocks");
+      const emptyState = document.getElementById("empty-state");
+
+      const defaultState = () => ({
+        activePageId: "page-1",
+        pages: [
+          {
+            id: "page-1",
+            title: "Моя первая страница",
+            blocks: [
+              { id: "block-1", type: "heading", content: "Добро пожаловать" },
+              {
+                id: "block-2",
+                type: "text",
+                content: "Это минимальный редактор заметок в стиле Notion.",
+              },
+              {
+                id: "block-3",
+                type: "checkbox",
+                content: "Создать свой первый список",
+                checked: false,
+              },
+            ],
+          },
+        ],
+      });
+
+      const loadState = () => {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) {
+          return defaultState();
+        }
+        try {
+          return JSON.parse(saved);
+        } catch (error) {
+          console.error("Ошибка чтения localStorage", error);
+          return defaultState();
+        }
+      };
+
+      let state = loadState();
+
+      const saveState = () => {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      };
+
+      const generateId = (prefix) =>
+        `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+
+      const getActivePage = () =>
+        state.pages.find((page) => page.id === state.activePageId);
+
+      const setActivePage = (pageId) => {
+        state.activePageId = pageId;
+        saveState();
+        render();
+      };
+
+      const addPage = () => {
+        const newPage = {
+          id: generateId("page"),
+          title: "Новая страница",
+          blocks: [],
+        };
+        state.pages.unshift(newPage);
+        state.activePageId = newPage.id;
+        saveState();
+        render();
+      };
+
+      const deletePage = (pageId) => {
+        if (state.pages.length === 1) {
+          return;
+        }
+        state.pages = state.pages.filter((page) => page.id !== pageId);
+        if (state.activePageId === pageId) {
+          state.activePageId = state.pages[0].id;
+        }
+        saveState();
+        render();
+      };
+
+      const addBlock = (type) => {
+        const page = getActivePage();
+        if (!page) return;
+        const newBlock = {
+          id: generateId("block"),
+          type,
+          content:
+            type === "heading"
+              ? "Новый заголовок"
+              : type === "checkbox"
+                ? "Новый пункт"
+                : "Новый текст",
+          checked: type === "checkbox" ? false : undefined,
+        };
+        page.blocks.push(newBlock);
+        saveState();
+        render();
+      };
+
+      const deleteBlock = (blockId) => {
+        const page = getActivePage();
+        if (!page) return;
+        page.blocks = page.blocks.filter((block) => block.id !== blockId);
+        saveState();
+        render();
+      };
+
+      const updateBlockContent = (blockId, content) => {
+        const page = getActivePage();
+        if (!page) return;
+        const block = page.blocks.find((item) => item.id === blockId);
+        if (!block) return;
+        block.content = content;
+        saveState();
+      };
+
+      const updateBlockChecked = (blockId, checked) => {
+        const page = getActivePage();
+        if (!page) return;
+        const block = page.blocks.find((item) => item.id === blockId);
+        if (!block) return;
+        block.checked = checked;
+        saveState();
+      };
+
+      const updatePageTitle = (title) => {
+        const page = getActivePage();
+        if (!page) return;
+        page.title = title;
+        saveState();
+        renderPages();
+      };
+
+      const renderPages = () => {
+        pagesContainer.innerHTML = "";
+        state.pages.forEach((page) => {
+          const item = document.createElement("div");
+          item.className = `page-item${
+            page.id === state.activePageId ? " active" : ""
+          }`;
+
+          const title = document.createElement("span");
+          title.textContent = page.title || "Без названия";
+          item.appendChild(title);
+
+          const removeButton = document.createElement("button");
+          removeButton.textContent = "×";
+          removeButton.title = "Удалить страницу";
+          removeButton.addEventListener("click", (event) => {
+            event.stopPropagation();
+            deletePage(page.id);
+          });
+          item.appendChild(removeButton);
+
+          item.addEventListener("click", () => setActivePage(page.id));
+          pagesContainer.appendChild(item);
+        });
+      };
+
+      const renderBlocks = () => {
+        const page = getActivePage();
+        blocksContainer.innerHTML = "";
+        if (!page || page.blocks.length === 0) {
+          emptyState.hidden = false;
+          return;
+        }
+        emptyState.hidden = true;
+        page.blocks.forEach((block) => {
+          const row = document.createElement("div");
+          row.className = "block";
+
+          if (block.type === "checkbox") {
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = Boolean(block.checked);
+            checkbox.addEventListener("change", (event) => {
+              updateBlockChecked(block.id, event.target.checked);
+            });
+            row.appendChild(checkbox);
+
+            const text = document.createElement("div");
+            text.className = "checkbox-text";
+            text.contentEditable = "true";
+            text.textContent = block.content;
+            text.addEventListener("input", (event) => {
+              updateBlockContent(block.id, event.target.textContent.trim());
+            });
+            row.appendChild(text);
+          } else {
+            const text = document.createElement("div");
+            text.contentEditable = "true";
+            text.textContent = block.content;
+            if (block.type === "heading") {
+              text.classList.add("heading");
+            }
+            text.addEventListener("input", (event) => {
+              updateBlockContent(block.id, event.target.textContent.trim());
+            });
+            row.appendChild(text);
+          }
+
+          const deleteButton = document.createElement("button");
+          deleteButton.className = "delete";
+          deleteButton.textContent = "Удалить";
+          deleteButton.addEventListener("click", () => deleteBlock(block.id));
+          row.appendChild(deleteButton);
+
+          blocksContainer.appendChild(row);
+        });
+      };
+
+      const render = () => {
+        renderPages();
+        const page = getActivePage();
+        pageTitleInput.value = page ? page.title : "";
+        renderBlocks();
+      };
+
+      addPageButton.addEventListener("click", addPage);
+      addBlockButton.addEventListener("click", () =>
+        addBlock(blockTypeSelect.value)
+      );
+      pageTitleInput.addEventListener("input", (event) =>
+        updatePageTitle(event.target.value)
+      );
+
+      render();
+    </script>
+  </body>
+</html>
