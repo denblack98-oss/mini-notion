@@ -138,6 +138,10 @@
         gap: 12px;
       }
 
+      .blocks-wrapper {
+        position: relative;
+      }
+
       .block {
         display: flex;
         align-items: flex-start;
@@ -168,6 +172,48 @@
         font-size: 16px;
       }
 
+      .checkbox-items {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+      }
+
+      .checkbox-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .checkbox-item input[type="checkbox"] {
+        margin: 0;
+      }
+
+      .checkbox-item .item-text {
+        flex: 1;
+        outline: none;
+      }
+
+      .checkbox-actions {
+        display: flex;
+        justify-content: flex-start;
+      }
+
+      .checkbox-actions button {
+        border: 1px dashed #cbd5e1;
+        background: transparent;
+        color: #475569;
+        border-radius: 10px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+
+      .checkbox-actions button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .block .delete {
         border: none;
         background: transparent;
@@ -179,6 +225,36 @@
       .empty {
         color: #9aa3b2;
         font-size: 14px;
+      }
+
+      .slash-menu {
+        position: absolute;
+        min-width: 180px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+        border-radius: 12px;
+        padding: 6px;
+        z-index: 10;
+      }
+
+      .slash-menu[hidden] {
+        display: none;
+      }
+
+      .slash-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .slash-menu-item.active {
+        background: #eef2ff;
+        color: #1d4ed8;
       }
 
       @media (max-width: 900px) {
@@ -215,9 +291,12 @@
           </select>
           <button id="add-block">Добавить блок</button>
         </div>
-        <div class="blocks" id="blocks"></div>
-        <div class="empty" id="empty-state" hidden>
-          Добавьте первый блок, чтобы начать писать.
+        <div class="blocks-wrapper">
+          <div class="blocks" id="blocks"></div>
+          <div class="empty" id="empty-state" hidden>
+            Добавьте первый блок, чтобы начать писать.
+          </div>
+          <div class="slash-menu" id="slash-menu" hidden></div>
         </div>
       </main>
     </div>
@@ -231,6 +310,8 @@
       const addBlockButton = document.getElementById("add-block");
       const blocksContainer = document.getElementById("blocks");
       const emptyState = document.getElementById("empty-state");
+      const slashMenu = document.getElementById("slash-menu");
+      const blocksWrapper = document.querySelector(".blocks-wrapper");
 
       const defaultState = () => ({
         activePageId: "page-1",
@@ -270,6 +351,17 @@
       };
 
       let state = loadState();
+      const slashOptions = [
+        { type: "text", label: "Текст" },
+        { type: "heading", label: "Заголовок" },
+        { type: "checkbox", label: "Чекбокс" },
+      ];
+      const slashState = {
+        open: false,
+        blockId: null,
+        selectedIndex: 0,
+        position: { x: 0, y: 0 },
+      };
 
       const saveState = () => {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -321,9 +413,19 @@
             type === "heading"
               ? "Новый заголовок"
               : type === "checkbox"
-                ? "Новый пункт"
+                ? undefined
                 : "Новый текст",
           checked: type === "checkbox" ? false : undefined,
+          items:
+            type === "checkbox"
+              ? [
+                  {
+                    id: generateId("item"),
+                    text: "Новый пункт",
+                    checked: false,
+                  },
+                ]
+              : undefined,
         };
         page.blocks.push(newBlock);
         saveState();
@@ -343,6 +445,7 @@
         if (!page) return;
         const block = page.blocks.find((item) => item.id === blockId);
         if (!block) return;
+        if (block.type === "checkbox") return;
         block.content = content;
         saveState();
       };
@@ -354,6 +457,172 @@
         if (!block) return;
         block.checked = checked;
         saveState();
+      };
+
+      const updateCheckboxItemContent = (blockId, itemId, text) => {
+        const page = getActivePage();
+        if (!page) return;
+        const block = page.blocks.find((item) => item.id === blockId);
+        if (!block || block.type !== "checkbox") return;
+        const item = block.items?.find((entry) => entry.id === itemId);
+        if (!item) return;
+        item.text = text;
+        saveState();
+      };
+
+      const updateCheckboxItemChecked = (blockId, itemId, checked) => {
+        const page = getActivePage();
+        if (!page) return;
+        const block = page.blocks.find((item) => item.id === blockId);
+        if (!block || block.type !== "checkbox") return;
+        const item = block.items?.find((entry) => entry.id === itemId);
+        if (!item) return;
+        item.checked = checked;
+        saveState();
+      };
+
+      const addCheckboxItem = (blockId) => {
+        const page = getActivePage();
+        if (!page) return;
+        const block = page.blocks.find((item) => item.id === blockId);
+        if (!block || block.type !== "checkbox") return;
+        if (!block.items) block.items = [];
+        if (block.items.length >= 10) return;
+        block.items.push({
+          id: generateId("item"),
+          text: "Новый пункт",
+          checked: false,
+        });
+        saveState();
+        render();
+        focusBlock(blockId, block.items.length - 1);
+      };
+
+      const changeBlockType = (blockId, type) => {
+        const page = getActivePage();
+        if (!page) return;
+        const block = page.blocks.find((item) => item.id === blockId);
+        if (!block || block.type === type) return;
+        if (type === "checkbox") {
+          const existingText =
+            block.content ||
+            (block.items && block.items[0] ? block.items[0].text : "") ||
+            "Новый пункт";
+          block.type = "checkbox";
+          block.items = [
+            { id: generateId("item"), text: existingText, checked: false },
+          ];
+          delete block.content;
+          delete block.checked;
+        } else {
+          const existingText =
+            block.content ||
+            (block.items && block.items[0] ? block.items[0].text : "");
+          block.type = type;
+          block.content =
+            existingText || (type === "heading" ? "Новый заголовок" : "Новый текст");
+          delete block.items;
+          delete block.checked;
+        }
+        saveState();
+        render();
+        focusBlock(blockId);
+      };
+
+      const normalizeCheckboxBlock = (block) => {
+        if (block.type !== "checkbox") return false;
+        if (!Array.isArray(block.items)) {
+          block.items = [
+            {
+              id: generateId("item"),
+              text: block.content || "Новый пункт",
+              checked: Boolean(block.checked),
+            },
+          ];
+          delete block.content;
+          delete block.checked;
+          return true;
+        }
+        let updated = false;
+        block.items = block.items.map((item) => {
+          if (!item.id) {
+            updated = true;
+            return { ...item, id: generateId("item") };
+          }
+          return item;
+        });
+        return updated;
+      };
+
+      const getCaretRect = (fallbackElement) => {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          if (rect && (rect.top || rect.left || rect.width || rect.height)) {
+            return rect;
+          }
+        }
+        return fallbackElement.getBoundingClientRect();
+      };
+
+      const positionSlashMenu = () => {
+        const wrapperRect = blocksWrapper.getBoundingClientRect();
+        slashMenu.style.left = `${slashState.position.x - wrapperRect.left}px`;
+        slashMenu.style.top = `${slashState.position.y - wrapperRect.top}px`;
+      };
+
+      const openSlashMenu = (blockId, rect) => {
+        slashState.open = true;
+        slashState.blockId = blockId;
+        slashState.selectedIndex = 0;
+        slashState.position = {
+          x: rect.left,
+          y: rect.bottom + 8,
+        };
+        renderSlashMenu();
+        slashMenu.hidden = false;
+        positionSlashMenu();
+      };
+
+      const closeSlashMenu = () => {
+        slashState.open = false;
+        slashState.blockId = null;
+        slashMenu.hidden = true;
+      };
+
+      const renderSlashMenu = () => {
+        slashMenu.innerHTML = "";
+        slashOptions.forEach((option, index) => {
+          const item = document.createElement("div");
+          item.className = `slash-menu-item${
+            slashState.selectedIndex === index ? " active" : ""
+          }`;
+          item.textContent = option.label;
+          item.addEventListener("click", () => {
+            changeBlockType(slashState.blockId, option.type);
+            closeSlashMenu();
+          });
+          slashMenu.appendChild(item);
+        });
+      };
+
+      const focusBlock = (blockId, itemIndex = 0) => {
+        const selector = `[data-block-id=\"${blockId}\"]`;
+        const blockElement = document.querySelector(selector);
+        if (!blockElement) return;
+        const checkboxItems = blockElement.querySelectorAll(
+          ".checkbox-item .item-text"
+        );
+        if (checkboxItems.length > 0) {
+          const target = checkboxItems[itemIndex] || checkboxItems[0];
+          target.focus();
+          return;
+        }
+        const editable = blockElement.querySelector("[contenteditable=\"true\"]");
+        if (editable) {
+          editable.focus();
+        }
       };
 
       const updatePageTitle = (title) => {
@@ -401,24 +670,54 @@
         page.blocks.forEach((block) => {
           const row = document.createElement("div");
           row.className = "block";
+          row.dataset.blockId = block.id;
 
           if (block.type === "checkbox") {
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.checked = Boolean(block.checked);
-            checkbox.addEventListener("change", (event) => {
-              updateBlockChecked(block.id, event.target.checked);
-            });
-            row.appendChild(checkbox);
+            const updated = normalizeCheckboxBlock(block);
+            if (updated) {
+              saveState();
+            }
+            const items = document.createElement("div");
+            items.className = "checkbox-items";
 
-            const text = document.createElement("div");
-            text.className = "checkbox-text";
-            text.contentEditable = "true";
-            text.textContent = block.content;
-            text.addEventListener("input", (event) => {
-              updateBlockContent(block.id, event.target.textContent.trim());
+            block.items.forEach((item) => {
+              const itemRow = document.createElement("div");
+              itemRow.className = "checkbox-item";
+
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.checked = Boolean(item.checked);
+              checkbox.addEventListener("change", (event) => {
+                updateCheckboxItemChecked(block.id, item.id, event.target.checked);
+              });
+              itemRow.appendChild(checkbox);
+
+              const text = document.createElement("div");
+              text.className = "item-text";
+              text.contentEditable = "true";
+              text.textContent = item.text;
+              text.addEventListener("input", (event) => {
+                updateCheckboxItemContent(
+                  block.id,
+                  item.id,
+                  event.target.textContent.trim()
+                );
+              });
+              itemRow.appendChild(text);
+              items.appendChild(itemRow);
             });
-            row.appendChild(text);
+
+            const actions = document.createElement("div");
+            actions.className = "checkbox-actions";
+            const addItemButton = document.createElement("button");
+            addItemButton.type = "button";
+            addItemButton.textContent = "Добавить пункт";
+            addItemButton.disabled = block.items.length >= 10;
+            addItemButton.addEventListener("click", () => addCheckboxItem(block.id));
+            actions.appendChild(addItemButton);
+            items.appendChild(actions);
+
+            row.appendChild(items);
           } else {
             const text = document.createElement("div");
             text.contentEditable = "true";
@@ -426,6 +725,16 @@
             if (block.type === "heading") {
               text.classList.add("heading");
             }
+            text.addEventListener("keydown", (event) => {
+              if (
+                event.key === "/" &&
+                text.textContent.trim() === "" &&
+                !event.shiftKey
+              ) {
+                event.preventDefault();
+                openSlashMenu(block.id, getCaretRect(text));
+              }
+            });
             text.addEventListener("input", (event) => {
               updateBlockContent(block.id, event.target.textContent.trim());
             });
@@ -443,6 +752,7 @@
       };
 
       const render = () => {
+        closeSlashMenu();
         renderPages();
         const page = getActivePage();
         pageTitleInput.value = page ? page.title : "";
@@ -456,6 +766,42 @@
       pageTitleInput.addEventListener("input", (event) =>
         updatePageTitle(event.target.value)
       );
+      document.addEventListener("click", (event) => {
+        if (!slashState.open) return;
+        if (slashMenu.contains(event.target)) return;
+        closeSlashMenu();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (!slashState.open) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeSlashMenu();
+          return;
+        }
+        if (event.key === "ArrowDown") {
+          event.preventDefault();
+          slashState.selectedIndex =
+            (slashState.selectedIndex + 1) % slashOptions.length;
+          renderSlashMenu();
+          return;
+        }
+        if (event.key === "ArrowUp") {
+          event.preventDefault();
+          slashState.selectedIndex =
+            (slashState.selectedIndex - 1 + slashOptions.length) %
+            slashOptions.length;
+          renderSlashMenu();
+          return;
+        }
+        if (event.key === "Enter") {
+          event.preventDefault();
+          const selected = slashOptions[slashState.selectedIndex];
+          if (selected) {
+            changeBlockType(slashState.blockId, selected.type);
+          }
+          closeSlashMenu();
+        }
+      });
 
       render();
     </script>
